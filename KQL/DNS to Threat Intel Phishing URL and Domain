@@ -1,0 +1,56 @@
+let dt_lookBack = 4h;
+let ioc_lookBack = 7d;
+//Create a list of TLDs in our threat feed for later validation
+let list_tlds = ThreatIntelligenceIndicator
+| where TimeGenerated > ago(ioc_lookBack)
+| where isnotempty(Url)
+| extend urlParse = parse_url(Url)
+| extend parts = split(tostring(urlParse.Host), '.')
+| extend tld = iif(tostring(parse_json(parts)[0])=="www", tostring(parse_json(parts)[1]) , tostring(parse_json(parts)[0]))
+| summarize count() by tostring(tld)
+| summarize make_list(tld);
+ThreatIntelligenceIndicator
+| where TimeGenerated >= ago(ioc_lookBack) and ExpirationDateTime > now()
+| where Active == true
+// Picking up only IOC's that contain the entities we want
+//| where isnotempty(DomainName)
+| extend Info = split(Description, ";")
+| extend TSIDold = tostring(split(Info[0],":",1))
+| extend TSID = tostring(parse_json(TSIDold)[0])
+| extend iTypeOld = tostring(split(Info[1],":",1))
+| extend Type = tostring(parse_json(iTypeOld)[0])
+| extend StateOld = tostring(split(Info[2],":",1))
+| extend State = tostring(parse_json(StateOld)[0])
+| extend OrgOld = tostring(split(Info[3],":",1))
+| extend Org = tostring(parse_json(OrgOld)[0])
+| extend SourceOld = tostring(split(Info[4],":",1))
+| extend Source = tostring(parse_json(SourceOld)[0])
+| project-away TSIDold, iTypeOld, StateOld, SourceOld, OrgOld, AzureTenantId,  ApplicationId
+| extend urlParse = parse_url(Url)
+| extend hostNameRaw = tostring(urlParse.Host)
+| extend finalURL = iif(hostNameRaw contains "www", hostNameRaw , strcat("www.", hostNameRaw)  )
+| where Type contains "phish" or Description contains "phish"
+| join ( DnsEvents
+| where TimeGenerated > ago(dt_lookBack)
+//Extract domain patterns from syslog message
+| where isnotempty(Name)
+| extend parts = split(Name, '.')
+//Split out the TLD
+| extend testUrl = iif(Name contains "www", Name , strcat("www.", Name)  )
+| extend testUrl2 = strcat("https://" , testUrl)
+| extend urlParse = parse_url(testUrl2)
+| extend urlFinal = tostring(urlParse.Host)
+//Validate parsed domain by checking if the TLD is in the list of TLDs in our threat feed
+| where parts has_any (list_tlds)
+| extend DNS_TimeGenerated = TimeGenerated
+) on $left.finalURL == $right.urlFinal
+| extend fullURL = strcat(tostring(urlParse.Scheme), "//", tostring(urlParse.Host) , tostring(urlParse.Path)), siteIP = IPAddresses
+| join ( SecurityEvent
+| where TimeGenerated >= ago(36h)
+| where EventID == 4624
+| where TargetAccount != "NT AUTHORITY\\ANONYMOUS LOGON" and AccountType == "User" 
+| distinct TargetAccount, WorkstationName, IpAddress
+//| project TargetAccount, WorkstationName, IpAddress
+) on $left.ClientIP == $right.IpAddress
+| extend User = TargetAccount, DNSName = Name
+| project DNS_TimeGenerated, ClientIP, User , WorkstationName , DNSName, siteIP, TSID, Org, Source, fullURL
