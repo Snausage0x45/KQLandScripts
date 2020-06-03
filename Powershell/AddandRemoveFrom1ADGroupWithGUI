@@ -1,0 +1,236 @@
+#load .NET Classes
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+#Functions to do work
+function add-UsertoGroup {
+    if ($addTextBox.Text.Contains("@")) {
+        $userType = "UPN"
+        $user = $addTextBox.Text
+        #Troubleshooting
+        Write-Host "usertyper is $userType and user is $user" 
+    } else {
+        $userType = "UID"
+        $user = $addTextBox.Text
+}
+switch ($userType) {
+    "UPN" { 
+        $UPNcheck = @()
+        $i = 0
+            while($i -ne 3){
+                
+                #Replace the name of the domains after server
+                $UPNcheck += Get-aduser -filter  {UserPrincipalName -eq $user}; $i++;
+                $UPNcheck += Get-aduser -filter  {UserPrincipalName -eq $user} -server 2.com; $i++;
+                $UPNcheck += Get-aduser -filter  {UserPrincipalName -eq $user} -server 3.com; $i++;
+            }
+            if ($NULL -eq $UPNcheck -or $UPNcheck -eq "" -or $UPNcheck.count -lt 1) {
+                Write-Host -ForegroundColor Red "Cannot find $user!"
+                $returnStatus.BackColor = "Transparent"
+                $returnStatus.ForeColor = "Red"
+                $returnStatus.Text = "Cannot find $user!"
+        }
+            else {
+                try {
+                    $tryCounter = 0
+                    #Add the name of the group here
+                    Add-AdGroupMember -Identity "GROUPNAMEGOESHEREXXXXXXX" -Members $UPNcheck -server 4.com -ErrorAction stop   
+                }
+                catch {
+                    $tryCounter++
+                    Write-Host -ForegroundColor Red "Cannot add $User to group!"
+                    $returnStatus.BackColor = "Transparent"
+                    $returnStatus.ForeColor = "Red"
+                    $returnStatus.Text = "Cannot add $User! to group!"
+                } if ($tryCounter -lt 1) {
+                    Write-Host -ForegroundColor Green "Added $user to group successfully"
+                    $returnStatus.BackColor = "Transparent"
+                    $returnStatus.ForeColor = "green"
+                    $returnStatus.Text = "Added $user to group successfully"
+                }
+                }
+            }    
+          
+        
+    "UID" {
+        try {
+            $userAccount= Get-ADUser -Identity $User -Server 1.com
+        }
+        catch {
+            try {
+                $userAccount= Get-ADUser -Identity $User -Server 2.com 
+            }
+            catch {
+                try {
+                    $userAccount= Get-ADUser -Identity $User -Server 3.com 
+                }
+                catch {
+                    Write-Host -ForegroundColor Red "Cannot find $user!"
+                    $returnStatus.BackColor = "Transparent"
+                    $returnStatus.ForeColor = "Red"
+                    $returnStatus.Text = "Cannot find $user!"
+                }
+            }
+        }
+        try {
+            #Add the name of the group here
+            Add-AdGroupMember -Identity "GROUPNANMEHEREXXXX" -Members $userAccount -server 4.com -ErrorAction stop
+            $tryCounter = 0   
+        }
+        catch {
+            $tryCounter++
+            Write-Host -ForegroundColor Red "Cannot add $user to group!"
+            $returnStatus.BackColor = "Transparent"
+            $returnStatus.ForeColor = "Red"
+            $returnStatus.Text = "Cannot add $user to group!"
+        } if ($tryCounter -lt 1) {
+            Write-Host -ForegroundColor Green "Added $user to group successfully"
+            $returnStatus.BackColor = "Transparent"
+            $returnStatus.ForeColor = "green"
+            $returnStatus.Text = "Added $user to group successfully"
+        }
+        }
+    }}
+
+function Remove-UserfromGroup {
+    if ($addTextBox.Text.Contains("@")) {
+        $userType = "UPN"
+        $user = $addTextBox.Text
+    } else {
+        $userType = "UID"
+        $user = $addTextBox.Text
+} 
+switch ($userType) {
+    "UPN" { 
+        $UPNcheck = @()
+        $i = 0
+            while($i -ne 3){
+        
+                $UPNcheck += Get-aduser -filter  {UserPrincipalName -eq $user}; $i++;
+                $UPNcheck += Get-aduser -filter  {UserPrincipalName -eq $user} -server 2.com; $i++;
+                $UPNcheck += Get-aduser -filter  {UserPrincipalName -eq $user} -server 3.com; $i++;
+            }
+            if ($NULL -eq $UPNcheck -or $UPNcheck -eq "" -or $UPNcheck.count -lt 1) {
+                Write-Host -ForegroundColor Red "Cannot find $user!"
+                $returnStatus.BackColor = "Transparent"
+                $returnStatus.ForeColor = "Red"
+                $returnStatus.Text = "Cannot find $user!"
+        }
+        else {
+            try {
+                #Add the name of the group here
+                $tryCounter = 0
+                Remove-AdGroupMember -Identity "GROUPNAMEHEREXXXXXX" -Members $UPNcheck -server corp.mosaicco.com -confirm:$false -ErrorAction stop   
+            }
+            catch {
+                $tryCounter++
+                Write-Host -ForegroundColor Red "Cannot find $User!"
+                $returnStatus.BackColor = "Transparent"
+                $returnStatus.ForeColor = "Red"
+                $returnStatus.Text = "Cannot remove $user from group!"
+            } if ($tryCounter -lt 1) {
+                Write-Host -ForegroundColor Green "Removed $user from group successfully"
+                $returnStatus.BackColor = "Transparent"
+                $returnStatus.ForeColor = "green"
+                $returnStatus.Text = "Removed $User from group successfully"
+            }
+            }   
+          
+        }
+        "UID" {
+            try {
+                $userAccount= Get-ADUser -Identity $User -Server 1.com
+            }
+            catch {
+                try {
+                    $userAccount= Get-ADUser -Identity $User -Server 2.com 
+                }
+                catch {
+                    try {
+                        $userAccount= Get-ADUser -Identity $User -Server 3.com 
+                    }
+                    catch {
+                        Write-Host -ForegroundColor Red "Cannot find $user!"
+                        $returnStatus.BackColor = "Transparent"
+                        $returnStatus.ForeColor = "Red"
+                        $returnStatus.Text = "Cannot find $user!"
+                    }
+                }
+            }
+            try {
+                #Add the name of the group here
+                remove-AdGroupMember -Identity "GROUPNAMEHEREXXXX" -Members $userAccount -server corp.mosaicco.com -confirm:$false -ErrorAction stop
+                $tryCounter = 0   
+            }
+            catch {
+                $tryCounter++
+                Write-Host -ForegroundColor Red "Cannot find $user!"
+                $returnStatus.BackColor = "Transparent"
+                $returnStatus.ForeColor = "Red"
+                $returnStatus.Text = "Cannot remove $user from group!"
+            } if ($tryCounter -lt 1) {
+                Write-Host -ForegroundColor Green "Removed $user from group successfully"
+                $returnStatus.BackColor = "Transparent"
+                $returnStatus.ForeColor = "green"
+                $returnStatus.Text = "Removed $user from group successfully"
+            }
+            }
+}
+}
+
+#Parent Box Config
+$Masterbox = New-Object system.windows.Forms.form
+$Masterbox.Text = 'USB Exemption Status Change'
+$Masterbox.Size = New-Object System.Drawing.Size(500,300)
+$Masterbox.StartPosition = 'CenterScreen'
+
+#add title to parent box
+$addLabel = New-Object System.Windows.Forms.Label
+$addLabel.Location = New-Object System.Drawing.Point(90,60)
+$addLabel.AutoSize = $true
+$addLabel.Font = "Microsoft Sans Serif, 15"
+$addLabel.Text = "Please input user to add to group."
+$Masterbox.Controls.Add($addLabel)
+
+#add title to parent box
+$addLabel2 = New-Object System.Windows.Forms.Label
+$addLabel2.Location = New-Object System.Drawing.Point(120,90)
+$addLabel2.AutoSize = $true
+$addLabel2.Font = "Microsoft Sans Serif, 9"
+$addLabel2.Text = "Acceptable inputs are NetworkID or Email"
+$Masterbox.Controls.Add($addLabel2)
+
+# user input textbox
+$addTextBox = New-Object System.Windows.Forms.TextBox
+$addTextBox.Location = New-Object System.Drawing.Point(120,140)
+$addTextBox.Size = New-Object System.Drawing.Size(250,180)
+$Masterbox.Controls.Add($addTextBox)
+
+
+#Add user Box Config
+$addUserButton = New-Object System.Windows.Forms.Button
+$addUserButton.Location = New-Object System.Drawing.Point(45,200)
+$addUserButton.Size = New-Object System.Drawing.Size(180,40)
+$addUserButton.Text = "Add User"
+$addUserButton.Add_click({add-UsertoGroup})
+$Masterbox.Controls.Add($addUserButton)
+
+#Remove user Box Config
+$addUserButton = New-Object System.Windows.Forms.Button
+$addUserButton.Location = New-Object System.Drawing.Point(250,200)
+$addUserButton.Size = New-Object System.Drawing.Size(180,40)
+$addUserButton.Text = "Remove User"
+$addUserButton.Add_click({Remove-UserfromGroup})
+$Masterbox.Controls.Add($addUserButton)
+
+#add return status
+$returnStatus = New-Object System.Windows.Forms.label
+$returnStatus.Location = New-Object System.Drawing.Size(130,120)
+$returnStatus.AutoSize = $true
+$returnStatus.Font = "Microsoft Sans Serif, 9"
+$returnStatus.BackColor = "Transparent"
+$returnStatus.Text = ""
+$Masterbox.Controls.add($returnStatus)
+
+# Show master Box
+$Masterbox.ShowDialog() | Out-Null
