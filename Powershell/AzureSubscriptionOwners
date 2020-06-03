@@ -1,0 +1,56 @@
+#Connect to Azure - needs module Az
+Connect-AzAccount
+
+#Get Subscription then find owners
+$azSub = Get-AzSubscription | Select ID,Name | ? {$_.Name -ne "Access to Azure Active Directory" -and $_.Name -ne "Visual Studio Professional"}
+
+#Create Blank Arrays/HashTables
+$ownerAndContrib = @()
+
+#loops through each subscription and gets the users and groups/subgroups and pulls out users
+foreach ($sub in $azSub) {
+    $subRealName = $sub.Name
+
+    $azSubId = $sub.Id.ToString()
+
+    $ownerAndContrib = Get-AzRoleAssignment -Scope /subscriptions/$azSubID -ErrorAction SilentlyContinue | ? {$_.RoleDefinitionName -eq "Owner" -or $_.RoleDefinitionName -like "*Contributor*"} 
+
+    foreach ($OandC in $ownerAndContrib) {
+        if ($OandC.ObjectType -eq "Group") {
+            $subrealname + "," + $OandC.DisplayName  | Out-file test2.csv -Append
+            Write-Host $subrealname + "," + $OandC.DisplayName # TroubleShooting
+
+            $getGroups = Get-AzADGroupMember -GroupObjectId $OandC.ObjectId
+
+            foreach ($groups in $getGroups) {
+                if ($groups.ObjectType -eq "Group") {
+                    $subrealname + "," + $OandC.DisplayName + "," + $groups.DisplayName  | Out-file test2.csv -Append    
+                    Write-Host $subrealname + "---" + $OandC.DisplayName + "---" + $groups.DisplayName # TroubleShooting
+
+                    $getgroups2 = Get-AzADGroupMember -GroupObjectId $groups.Id
+
+                    foreach ($group2 in $getGroups2) {
+                        #no groups below here so just show users
+                        $subrealname + "," + $OandC.RoleDefinitionName + ',' + $OandC.DisplayName + "," + $groups.DisplayName + "," + $group2.UserPrincipalName  | Out-file test2.csv -Append    
+                        Write-Host $subrealname + "---" + $OandC.RoleDefinitionName + ',' $OandC.DisplayName + "---" + $groups.UserPrincipalName   + "-------------------" + $group2.DisplayName # Troubleshooting
+                    }
+                }else {
+                    $subrealname + ","  + $OandC.RoleDefinitionName + ',' + $OandC.DisplayName + "," + $groups.UserPrincipalName  | Out-file test2.csv -Append    
+                    Write-Host $subrealname + "---" + $OandC.DisplayName + "---" + $groups.UserPrincipalName   + " ----groups " + $OandC.ObjectType #Troubleshooting
+                }
+            }
+
+        }else {
+            $upnGet = Get-AzADUser -DisplayName $OandC.DisplayName -ErrorAction SilentlyContinue | Select UserPrincipalName 
+            if($upnGet -eq $null -or ""){
+                $displayGet = $OandC.DisplayName.Replace(',','-') 
+                $subrealname + "," + $OandC.RoleDefinitionName + ',' + $displayGet  | Out-file test2.csv -Append    
+                Write-Host $subrealname + "---" + $displayGet + " ----OandC " + $OandC.ObjectType #troubleshooting
+            }else{
+            	$upnReal = $upnGet.UserPrincipalName
+            	$subrealname + "," + $OandC.RoleDefinitionName + ',' + $upnReal  | Out-file test2.csv -Append    
+            	Write-Host $subrealname + "---" + $upnReal + " ----OandC " + $OandC.ObjectType #troubleshooting
+            }
+        }
+    }
+}
