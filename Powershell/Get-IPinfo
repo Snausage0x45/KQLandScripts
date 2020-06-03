@@ -1,0 +1,30 @@
+function Get-Ipinfo
+    {
+    
+        param($ip)
+        
+        #Need to get an API key from https://auth0.com/signals/docs/#what-is-auth0-signals
+        
+        $response = Invoke-WebRequest -Uri https://signals.api.auth0.com/v2.0/ip/$ip -Method GET -Headers @{'accept'="application/json";'x-auth-token'="XXXXXXXX"} | select -ExpandProperty Content | ConvertFrom-Json
+
+        $city = $response.fullip.geo.region
+        $country = $response.fullip.geo.country_names.en
+        $asn = $response.fullip.whois.asn_description
+        $asn_network = $response.fullip.whois.network.name
+        $score = $response.fullip.score
+        $ipBlackLists = $response.fullip.badIp.blacklists
+        $hostName = $response.fullip.hostname
+
+        $results = [ordered]@{
+            'City' = "$City"
+            'Country' = "$country"
+            'asn' = "$asn"
+            'asn_network' = "$asn_network"
+            'score' = "$score"
+            'IPBlackLists' = "$ipBlackLists"
+            'hostName' = "$hostname"
+
+
+        }
+        $results
+    }
