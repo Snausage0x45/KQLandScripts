@@ -1,0 +1,265 @@
+#####################################################################################################################################################################
+# AD Section
+#####################################################################################################################################################################
+
+#================================
+# Get user to base ADM account on
+#================================
+
+
+$userGetAsk = Read-Host "SamAccountName of User?"
+
+try {
+    $userGet = Get-ADUser -Identity $userGetAsk -Server 1.com -properties *
+    $userDomain = "1"
+}
+catch {
+    try {
+        $userGet = Get-ADUser -Identity $userGetAsk -Server 8.com -properties *
+        $userDomain = "8"
+    }
+    catch {
+        try {
+            $userGet = Get-ADUser -Identity $userGetAsk -Server 5.com -properties *
+            $userDomain = "5"
+        }
+        catch {
+            Write-host "Can't Find $userGetAsk" -BackgroundColor Red -ErrorAction Stop 
+            #TODO : Add part to email/alert on failure
+        }
+    }
+}
+
+
+
+#$userGet = Get-ADUser $userGetAsk -Properties *
+#============================
+# Transform into usable terms
+#============================
+$userName = $userGet.Name + " " + "(ADM)"
+$userADMSamAccountName = "adm-" + $userGet.SamAccountName
+$userDescription = $userGet.name + " " + "ADM Account"
+$userOffice = "NODL"
+$userDisplayName = $userName 
+$userFirstName = $userGet.GivenName
+$userLastName = $userGet.Surname + " " + "adm"
+$userPassword =  ConvertTo-SecureString -String 'Pleaseletthiswork123@1' -AsPlainText -Force
+$userNameNotADM = $userGet.SamAccountName
+$userOU = $userGet.DistinguishedName -Replace "^([^,]+,)",""
+$userExperationDate = $userGet.AccountExpirationDate
+$userManager = $userGet.Manager
+
+#====================
+# HashTable of Values
+#====================
+$userHash = @{
+    Name = $userName
+    SamAccountName = $userADMSamAccountName
+    DisplayName = $userDisplayName
+    Office = $userOffice
+    GivenName = $userFirstName
+    Surname = $userLastName
+    Description = $userDescription
+    AccountPassword = $userPassword
+    enabled = $true
+    ChangePasswordAtLogon = $false
+    AccountExpirationDate = $userExperationDate
+    Manager = $userManager
+}
+
+
+switch ($userDomain) {
+    "6" { 
+        $userEmail = $userADMSamAccountName + "@6.com"
+        $userhash += @{EmailAddress = "$useremail"}
+        $userhash += @{UserPrincipalName = "$useremail"}
+        #=======================
+        # Create New AD ADM User
+        #=======================
+        New-ADUser @userHash -Server 6.com
+
+        $getADMUser = get-aduser $userADMSamAccountName -Server 6.com | Select DistinguishedName
+        Move-ADObject -Identity $getADMUser.DistinguishedName -TargetPath $userOU -Server  6.com
+
+        if($userGet.memberOf -contains "CYBERARK GROUP"){
+            Write-Host "Already In CyberArk" -BackgroundColor Green -ForegroundColor Black
+        }elseif($userGet.memberOf -contains "OTHER CYBERARK GROUP"){
+            Write-Host "Already In CyberArk" -BackgroundColor Green -ForegroundColor Black
+        }else {
+            Add-ADGroupMember -Identity CYBERARKGROUP -Members $userGet -Server  mna.corp.mosaicco.com;
+            Write-Host "Added User to CyberArk, Sleeping for 3 minutes" -BackgroundColor Green -ForegroundColor Red
+            Start-Sleep -Seconds 180
+        }
+
+        ############################################
+        # CyberArk Section
+        ############################################
+
+        #====================
+        # Connect to CyberArk
+        #====================
+        Import-Module psPAS
+        $cred = Get-Credential
+        $token = New-PasSession -Credential $cred -BaseURI https://pvwa.DOMAIN.com/ -SkipVersionCheck
+
+        #============================
+        # Create Safe for ADM Account
+        #============================
+        try{
+        $safename = "6_$userADMSamAccountName"
+        $token | Add-PASSafe -SafeName $safename -OLACEnabled $true -ManagingCPM PasswordManager -NumberOfVersionsRetention 5 -ErrorAction Stop
+        }catch{
+            Write-Host "Safe Already Exists, Exiting Script!" -BackgroundColor Red -ForegroundColor Black
+            return
+        }
+        #==================
+        # Add Users to Safe
+        #==================
+        Try{
+            $userDeets = @{
+                SafeName = "6_$userADMSamAccountName"
+                MemberName = "$userNameNotADM"
+                SearchIn = "OTHERDOMAIN"
+                }
+                $safePerms=@{
+                UseAccounts = $true
+                RetrieveAccounts = $true
+                ListAccounts = $true
+                InitiateCPMAccountManagementOperations = $true
+                ViewAuditLog = $true
+                UnlockAccounts = $true
+                }
+                $token | Add-PASSafeMember @userDeets @safePerms -erroraction Stop
+            }
+        catch{
+            write-host "User not in Safe yet, sleeping for two minutes" -ForegroundColor Red -BackgroundColor Black
+            Start-Sleep -Seconds 120
+                $userDeets = @{
+                SafeName = "6_$userADMSamAccountName"
+                MemberName = "$userNameNotADM"
+                SearchIn = "OTHERDOMAIN"
+                }
+                $safePerms=@{
+                UseAccounts = $true
+                RetrieveAccounts = $true
+                ListAccounts = $true
+                InitiateCPMAccountManagementOperations = $true
+                ViewAuditLog = $true
+                UnlockAccounts = $true
+                }
+                $token | Add-PASSafeMember @userDeets @safePerms  
+            }
+        #====================
+        # Add Account to Safe
+        #====================
+        $PASpassword = ConvertTo-SecureString -String 'Pleaseletthiswork123@1' -AsPlainText -Force
+        $PASdynamicAtribute = @{
+        DeviceType = "Operating System"
+        }
+        $token | Add-PASAccount  -userName $userADMSamAccountName -platformID ADDPLATFORMHERE -DynamicProperties $PASdynamicAtribute -SafeName 6_$userADMSamAccountName -address 6.com -password $PASpassword
+
+        #======================
+        # Cyle Account Password
+        #======================
+        $PasCredChange = $token | Get-PASAccount -Keywords $userADMSamAccountName -Safe "6_$userADMSamAccountName"| select AccountID 
+
+        $token | Invoke-PASCredReconcile -AccountID $PasCredChange.AccountID
+        
+    }
+    "8" { 
+        $userEmail = $userADMSamAccountName + "@8.com"
+        $userhash += @{EmailAddress = "$useremail"}
+        $userhash += @{UserPrincipalName = "$useremail"}
+        #=======================
+        # Create New AD ADM User
+        #=======================
+        New-ADUser @userHash -Server 8.com
+
+        $getADMUser = get-aduser $userADMSamAccountName -Server 8.com | Select DistinguishedName
+        Move-ADObject -Identity $getADMUser.DistinguishedName -TargetPath $userOU -Server 8.com
+
+        if($userGet.memberOf -contains "CYBERARK GROUP"){
+            Write-Host "Already In CyberArk" -BackgroundColor Green -ForegroundColor Black
+        }elseif($userGet.memberOf -contains "OTHER CYBERARK GROUP"){
+            Write-Host "Already In CyberArk" -BackgroundColor Green -ForegroundColor Black
+        }else {
+            Add-ADGroupMember -Identity CA-User-MLA -Members $userGet -Server 8.com;
+            Write-Host "Added User to CyberArk, Sleeping for 2 minutes" -BackgroundColor Green -ForegroundColor Red
+            Start-Sleep -Seconds 120
+        }
+
+        ############################################
+        # CyberArk Section
+        ############################################
+        #====================
+        # Connect to CyberArk
+        #====================
+        Import-Module psPAS
+        $cred = Get-Credential
+        $token = New-PasSession -Credential $cred -BaseURI https://pvwa.mosaicco.com/ -SkipVersionCheck
+
+        #============================
+        # Create Safe for ADM Account
+        #============================
+        try{
+        $safename = "8_$userADMSamAccountName"
+        $token | Add-PASSafe -SafeName $safename -OLACEnabled $true -ManagingCPM PasswordManager -NumberOfVersionsRetention 5 -ErrorAction Stop
+        }catch{
+            Write-Host "Safe Already Exists, Exiting Script!" -BackgroundColor Red -ForegroundColor Black
+            return
+        }
+        #==================
+        # Add Users to Safe
+        #==================
+        Try{
+            $userDeets = @{
+                SafeName = "8_$userADMSamAccountName"
+                MemberName = "$userNameNotADM"
+                SearchIn = "OTHER DOMAIN"
+                }
+                $safePerms=@{
+                UseAccounts = $true
+                RetrieveAccounts = $true
+                ListAccounts = $true
+                InitiateCPMAccountManagementOperations = $true
+                ViewAuditLog = $true
+                UnlockAccounts = $true
+                }
+                $token | Add-PASSafeMember @userDeets @safePerms -erroraction Stop
+            }
+        catch{
+            write-host "User not in Safe yet, sleeping for two minutes" -ForegroundColor Red -BackgroundColor Black
+            Start-Sleep -Seconds 120
+                $userDeets = @{
+                SafeName = "8_$userADMSamAccountName"
+                MemberName = "$userNameNotADM"
+                SearchIn = "corp.mosaicco.com"
+                }
+                $safePerms=@{
+                UseAccounts = $true
+                RetrieveAccounts = $true
+                ListAccounts = $true
+                InitiateCPMAccountManagementOperations = $true
+                ViewAuditLog = $true
+                UnlockAccounts = $true
+                }
+                $token | Add-PASSafeMember @userDeets @safePerms        
+            }
+        #====================
+        # Add Account to Safe
+        #====================
+        $PASpassword = ConvertTo-SecureString -String 'Pleaseletthiswork123@1' -AsPlainText -Force
+        $PASdynamicAtribute = @{
+        DeviceType = "Operating System"
+        }
+        $token | Add-PASAccount  -userName $userADMSamAccountName -platformID PLATFORM -DynamicProperties $PASdynamicAtribute -SafeName 8_$userADMSamAccountName -address 8.com -password $PASpassword
+
+        #======================
+        # Cyle Account Password
+        #======================
+        $PasCredChange = $token | Get-PASAccount -Keywords $userADMSamAccountName -Safe "8_$userADMSamAccountName"| select AccountID 
+
+        $token | Invoke-PASCredReconcile -AccountID $PasCredChange.AccountID
+        
+    }
+}
