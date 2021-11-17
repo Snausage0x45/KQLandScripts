@@ -1,0 +1,89 @@
+function Get-IpInfo {
+    param (
+        $ip
+    )
+
+    #Build the Request
+    $tenantId = '' ### Paste your tenant ID here
+    $appId = '' ### Paste your Application ID here
+    $appSecret = '' ### Paste your Application secret here
+
+    $resourceAppIdUri = 'https://api.securitycenter.windows.com'
+    $oAuthUri = "https://login.windows.net/$TenantId/oauth2/token"
+    $authBody = [Ordered] @{
+        resource = "$resourceAppIdUri"
+        client_id = "$appId"
+        client_secret = "$appSecret"
+        grant_type = 'client_credentials'
+    }
+    $authResponse = Invoke-RestMethod -Method Post -Uri $oAuthUri -Body $authBody -ErrorAction Stop
+    $token = $authResponse.access_token
+
+    #DateTime, change as needed
+    $dateTime = (Get-Date).ToUniversalTime().ToString("o")       
+    #Actual Request
+    $url = "https://api.securitycenter.windows.com/api/advancedqueries/run"
+
+    # Set the WebRequest headers
+    $headers = @{ 
+        'Content-Type' = 'application/json'
+        Accept = 'application/json'
+        Authorization = "Bearer $token" 
+    }
+
+    
+ $query = @"
+    let ipAddressParam = "$ip";
+    DeviceNetworkInfo
+    | where Timestamp >= ago(1d) and IPAddresses contains strcat("\"", ipAddressParam, "\"") and NetworkAdapterStatus == "Up"
+    //| project DeviceName, Timestamp, IPAddresses
+    | sort by Timestamp asc
+    | distinct DeviceName, IPv4Dhcp
+"@   
+     
+$body = ConvertTo-Json -InputObject @{ 'Query' = $Query }
+
+# Send the webrequest and get the results
+
+$response = Invoke-WebRequest -Method Post -Uri $url -Body $body -Headers $headers #-ErrorAction Stop
+
+if (($response.Content | ConvertFrom-Json).Stats.dataset_statistics.table_size -gt 0) {
+    
+    $table = ($response.Content | ConvertFrom-Json).Results
+
+    #foreach ($entry in $table) {
+    for ($i = 0; $i -lt $table.Count; $i++) {
+        
+        
+        $results = [ordered]@{
+            'Host Name' = $table[$i].DeviceName.Substring(0,$table[$i].DeviceName.IndexOf("."))
+            'Domain' = $table[$i].DeviceName -replace "(^.\w+.)",""
+            'Internal IP' = $table[$i].IPv4Dhcp
+        }
+        $results 
+        "`n"
+    }
+    #}
+}elseif (($response.Content | ConvertFrom-Json).Stats.dataset_statistics.table_size -eq 0) {
+    $response = Invoke-WebRequest -Uri https://signals.api.auth0.com/v2.0/ip/$ip -Method GET -Headers @{'accept'="application/json";'x-auth-token'="XXXXXX"} -ErrorAction Stop -ErrorVariable Err | select -ExpandProperty Content | ConvertFrom-Json
+ 
+         $city = $response.fullip.geo.region
+         $country = $response.fullip.geo.country_names.en
+         $asn = $response.fullip.whois.asn_description
+         $asn_network = $response.fullip.whois.network.name
+         $score = $response.fullip.score
+         $ipBlackLists = $response.fullip.badIp.blacklists
+         $hostName = $response.fullip.hostname
+ 
+         $results = [ordered]@{
+             'City' = "$City"
+             'Country' = "$country"
+             'asn' = "$asn"
+             'asn_network' = "$asn_network"
+             'score' = "$score"
+             'IPBlackLists' = "$ipBlackLists"
+             'hostName' = "$hostname"
+         }
+     $results
+     }
+     }

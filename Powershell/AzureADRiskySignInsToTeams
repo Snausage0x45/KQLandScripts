@@ -1,0 +1,70 @@
+# Login info for AzureAPI
+$ClientID       = ""              
+$ClientSecret   = ""         
+$tenantId       = ""
+$LoginURL       = "https://login.microsoftonline.com"                      # OAuth Signin endpoint
+$Resource       = "https://graph.windows.net"                              # Graph API to find all users 
+$teamsUri = ""
+
+$uri="https://login.microsoftonline.com/$tenantId/oauth2/token"
+$body=@{
+    scope='https://graph.microsoft.com'
+    client_id=$ClientID
+    client_secret=$ClientSecret 
+    grant_type="client_credentials"
+    resource='https://graph.microsoft.com'
+ }
+#Send Token
+
+$token=Invoke-RestMethod -Uri $uri -Method Post -Body $body 
+$header=@{Authorization= 'Bearer '+$($token.access_token)}
+$date = (get-date).ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+#URI for API Call
+$URLthing="https://graph.microsoft.com/beta/identityRiskEvents?`$filter=riskEventStatus eq 'active' and createdDateTime gt $date"
+
+#make API Call
+$makeCall = Invoke-RestMethod -Uri $URLthing -Method Get -Headers $header | select -ExpandProperty value
+ 
+#foreach loop to go through the call and send Teams Message for each
+foreach($event in $makeCall){
+    
+#Get values from Event data in Azure API Calls
+$status = ''
+$fact1 = $event.userPrincipalName
+$fact2 = $event.riskEventType
+$fact3 = $event.createdDateTime
+$userUri = $event.userId
+
+#Create Teams message body
+$body = ConvertTo-Json -Depth 4 @{
+    title = 'New Sus Azure Logins'
+    text = "There is a new user with suspicious logins in Azure"
+    sections = @(
+        @{
+            title = 'Details'
+            facts = @(
+                @{
+                name = 'User with Suspicious Logins'
+                value = $fact1
+                },
+                @{
+                name = 'Type of Suspicious Logins'
+                value = $fact2
+                },
+                @{
+                name = 'Date of the event'
+                value = $fact3
+                }
+            )
+        }
+    )
+        potentialAction = @(@{
+            '@context' = 'http://schema.org'
+            '@type' = 'ViewAction'
+            name = "Click here to view the user's sign-ins"
+            target = @("https://portal.azure.com/#blade/Microsoft_AAD_IAM/UserDetailsMenuBlade/SignIns/userId/$userUri")
+        })
+}
+Invoke-RestMethod -uri $Teamsuri -Method Post -body $body -ContentType 'application/json'
+}
