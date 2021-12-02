@@ -188,5 +188,3 @@ $l2tDumpPath = $linuxOutPath + "/plaso.dump"
     Add-Content -Path $logPath -Value "Script Exection took: $Runtime minutes to complete `n"
     
 }
-
-Parse-Artifacts -Drive I -outPath F:\activeCases\INCTest\Hostname -StartDate "2020-09-01" -EndDate "2021-07-01"
