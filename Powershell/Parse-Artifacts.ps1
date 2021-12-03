@@ -4,7 +4,7 @@ function Parse-Artifacts {
         [string]$Drive,
 
         [Parameter(Mandatory)]
-        [string]$outPath,
+        [string]$OutPath,
 
         [Parameter()]
         [string]$StartDate,
@@ -20,15 +20,16 @@ function Parse-Artifacts {
         Write-Host "Drive $Drive not found, please double check the mounted letter and ensure you are passing the letter only (pass I and not I:\)" -BackgroundColor Red -ForegroundColor Black
     }
     #set some Variables
-    $linuxOutPath = wsl wslpath -u ($outpath.Replace('\','\\'))
+    $linuxOutPath = wsl wslpath -u ($Outpath.Replace('\','\\'))
+    $stopWatch = [System.Diagnostics.Stopwatch]::StartNew()
 
     #make the log file
-    if ($null -eq (Test-Path "$outPath\Parse-Artifacts_runLog.txt") ) {
-        New-item -Name Parse-Artifacts_runLog.txt -Path $outPath
+    if ($null -eq (Test-Path "$OutPath\Parse-Artifacts_runLog.txt") ) {
+        New-item -Name Parse-Artifacts_runLog.txt -Path $OutPath
     }
-    $logPath = $outPath + "/Parse-Artifacts_runLog.txt"
+    $logPath = $OutPath + "/Parse-Artifacts_runLog.txt"
 
-    $stopWatch = [System.Diagnostics.Stopwatch]::StartNew()
+    
 
 ########################################################### Windows Events ###################################################################
     Add-Content -Path $logPath -Value "##################### Starting Windows Logs Section ###################################### `n"
@@ -52,16 +53,16 @@ function Parse-Artifacts {
     #Detect sus activity in windows logs with chainsaw
     try {
         #make chainsaw output folder
-        if ($false -eq (test-path "$outPath\chainsawOutput")) {
-            New-Item -ItemType Directory -Path $outPath -Name "chainsawOutPut"
+        if ($false -eq (test-path "$OutPath\chainsawOutput")) {
+            New-Item -ItemType Directory -Path $OutPath -Name "chainsawOutPut"
         }else {
         }
         #create evtx path
         $evtxPath = $Drive + ":\" + "C\Windows\System32\winevt\logs"
         Write-host "Running chainsaw against windows logs"
-        & "F:\tools\chainsaw\chainsaw.exe" hunt $evtxPath --rules F:\tools\chainsaw\sigma_rules --mapping F:\tools\chainsaw\mapping_files\sigma-mapping.yml --csv "$outPath\chainsawOutput" --lateral-all
+        & "F:\tools\chainsaw\chainsaw.exe" hunt $evtxPath --rules F:\tools\chainsaw\sigma_rules --mapping F:\tools\chainsaw\mapping_files\sigma-mapping.yml --csv "$OutPath\chainsawOutput" --lateral-all
 
-        Add-Content -Path $logPath -Value "Successfully parsed all evtx logs in the supplied directory with chainsaw, output is in ($outPath + '\chainsawOutPut') `n"
+        Add-Content -Path $logPath -Value "Successfully parsed all evtx logs in the supplied directory with chainsaw, output is in ($OutPath + '\chainsawOutPut') `n"
     }
     catch {
         Add-Content -Path $logPath -Value "Error with chainsaw, please double check the output and try manually `n"
@@ -85,12 +86,13 @@ function Parse-Artifacts {
             Add-Content -Path $logPath -Value "$artifact Was found and will be processed `n"
 
             switch ($_.Key.ToString()) {
-                AmCache { & "F:\tools\AmcacheParser.exe" -f ("$drive" + ":\" + "C\Windows\AppCompat\Programs\Amcache.hve") -w F:\tools\goodHashes.txt -i on --csv $outPath --csvf amcacheParsed.csv}
-                ShimCache { & "F:\tools\AppCompatCacheParser.exe" -f("$drive" + ":\" + "C\Windows\System32\config\SYSTEM") --csv $outPath --csvf shimcacheParsed.csv }
-                Prefetch { & 'F:\tools\PECmd.exe' -d ("$drive" + ":\" + "c\Windows\prefetch\") --csv $outPath --csvf prefetchParsed.csv }
+                AmCache { & "F:\tools\AmcacheParser.exe" -f ("$drive" + ":\" + "C\Windows\AppCompat\Programs\Amcache.hve") -w F:\tools\goodHashes.txt -i on --csv $OutPath --csvf amcacheParsed.csv}
+                ShimCache { & "F:\tools\AppCompatCacheParser.exe" -f("$drive" + ":\" + "C\Windows\System32\config\SYSTEM") --csv $OutPath --csvf shimcacheParsed.csv }
+                Prefetch { & 'F:\tools\PECmd.exe' -d ("$drive" + ":\" + "c\Windows\prefetch\") --csv $OutPath --csvf prefetchParsed.csv }
             }
 
         }else {
+            $artifact = $_.Key.ToString()
             Write-Host "$artifact was not found and will be skipped" -ForegroundColor Black -BackgroundColor Yellow
             Add-Content -Path $logPath -Value "$artifact Was NOT found and won't be processed `n"
         }
@@ -100,7 +102,7 @@ function Parse-Artifacts {
     try {
         $UserProfs = $drive + ":\" +"c\Users"
         if ($true -eq (test-path $UserProfs)) {
-            & F:\tools\RegistryExplorer\RECmd.exe -d "$UserProfs" --bn F:\tools\RegistryExplorer\BatchExamples\AllRegExecutablesFoundOrRun.reb --csv $outPath --csvf AllRegExes.csv 
+            & F:\tools\RegistryExplorer\RECmd.exe -d "$UserProfs" --bn F:\tools\RegistryExplorer\BatchExamples\AllRegExecutablesFoundOrRun.reb --csv $OutPath --csvf AllRegExes.csv 
         }
     }
     catch {
@@ -113,7 +115,7 @@ function Parse-Artifacts {
         Write-Host "Parsing MFT"
         Add-Content -Path $logPath -Value " Parsed MFT items as CSV `n"
         #Parses the MFT in an item by item fashion
-        & 'F:\tools\MFTECmd.exe' -f ("$Drive" + ":\" + 'C\$MFT') --csv $outPath --csvf "C_MFT_Parsed.csv"
+        & 'F:\tools\MFTECmd.exe' -f ("$Drive" + ":\" + 'C\$MFT') --csv $OutPath --csvf "C_MFT_Parsed.csv"
 
     }
     catch {
@@ -123,7 +125,7 @@ function Parse-Artifacts {
         #Creates a bodyfile then parses and outputs as a system timeline
         Write-Host "Creating bodyfile from MFT"
         Add-Content -Path $logPath -Value "Created bodyfile from MFT `n"
-        & 'F:\tools\MFTECmd.exe' -f ("$Drive" + ":\" + 'C\$MFT') --body $outPath --bodyf "C_MFT_Timeline.body" --bld --bdl C:
+        & 'F:\tools\MFTECmd.exe' -f ("$Drive" + ":\" + 'C\$MFT') --body $OutPath --bodyf "C_MFT_Timeline.body" --bld --bdl C:
     }
     catch {
         
@@ -157,7 +159,7 @@ function Parse-Artifacts {
 
 
 $l2tDumpPath = $linuxOutPath + "/plaso.dump"
-    if ($false -eq $EndDate -or $null -eq $EndDate -and $null -eq $EndDate -or $false -eq $EndDate) {
+    if ($false -eq $EndDate -or $null -eq $EndDate -and $null -eq $StartdDate -or $false -eq $StartDate) {
         $Lt2FullPath = $linuxOutPath + "/C_Supertimeline.csv"
         wsl psort.py --output_time_zone UTC -o l2tcsv $l2tdumppath -w $Lt2FullPath
 
