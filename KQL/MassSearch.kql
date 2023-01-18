@@ -1,0 +1,16 @@
+let MassSearchFunction_SingleTable = (startDate:datetime, lookBackInDays:int, thingToSearch:string) {
+let lookBack = (24 * lookBackInDays);
+let N = lookBack; //7200minutes = 5 day
+let stepNum = 1;
+//let startDate = now();
+let securityEvents = 
+    range p from 0 to N step stepNum
+    | partition hint.strategy=shuffle  by p // add hint.materialized=true after shuffle to materialze results
+        {
+        SecurityEvent
+        | where  TimeGenerated  between ((startDate - ((toscalar(p) * 1h) + (stepNum * 1h))) .. (startDate - (toscalar(p) * 1h)))
+        };
+securityEvents
+| where * has (thingToSearch)
+};
+MassSearchFunction_SingleTable(now(),1,"thingToSearchFor")
