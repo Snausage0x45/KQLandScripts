@@ -1,0 +1,18 @@
+let shells = pack_array('pwsh.exe','cmd.exe','powershell.exe'); 
+let commandLineFlags = pack_array("hidden -noni -c","System.IO.StreamReader"); 
+SecurityEvent 
+| where EventID == "4688" 
+| where Process has_any (shells) 
+and CommandLine has_all (commandLineFlags) 
+| extend gzipb64raw = extract(@"(?:FromBase64String)\(\(\(''(.*)''\)(?:-f)",1,CommandLine), deobfKey =  extract(@"(?:FromBase64String\(\(\(''.*''\)-f)(.*'')\)",1,CommandLine) // extract the base64 string and deobf keys 
+| extend gzipb64clean = replace_regex(gzipb64raw,@"(\'\'\+\'\')+",@""),  deobfKeyClean = extract_all(@"''([^'']*)''",deobfKey) // clean and format for use 
+| extend transform2 = replace_string(gzipb64clean,'{0}',tostring(deobfKeyClean[0])) // Replace obfuscation with correct characters 
+| extend transform3 = replace_string(transform2,'{1}',tostring(deobfKeyClean[1])) 
+| extend transform4 = replace_string(transform3,'{2}',tostring(deobfKeyClean[2])) 
+| extend dropperScript = gzip_decompress_from_base64_string(transform4) // transform from base64 and gunzip 
+| extend payloadBase64 = extract(@"FromBase64String\(""(.*)""\)",1,dropperScript) // extract the final payload 
+| extend payloadDecoded = make_string(base64_decode_toarray(payloadBase64)) // transform from byte array to string 
+// some versions will have strings in their shellcode, if so uncomment these lines to extract IOCs 
+//| extend C2 = extract(@"(\d*\.\d*\..\d*\.\d*)",0,payloadDecoded) 
+//| extend httpRequest = extract(@"(\w+/\w*\.exe)",0,payloadDecoded) 
+//| extend droppedFile = extract(@'(\w*\.exe)',0,payloadDecoded)  
